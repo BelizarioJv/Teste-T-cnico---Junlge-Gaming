@@ -93,6 +93,12 @@ export class Money {
     return this.value.lessThan(other.value);
   }
 
+  isGreaterThan(other: Money): boolean {
+    this.assertSameCurrency(other);
+
+    return this.value.greaterThan(other.value);
+  }
+
   equals(other: Money): boolean {
     this.assertSameCurrency(other);
 

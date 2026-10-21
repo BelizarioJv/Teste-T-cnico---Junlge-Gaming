@@ -19,10 +19,21 @@
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
     "test:debug": "vitest --inspect-brk --no-file-parallelism",
-    "test:e2e": "vitest run --config ./vitest.config.e2e.ts"
+    "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
+    "test:integration": "vitest run --config ./vitest.config.integration.ts",
+    "test:all": "bun run test && bun run test:integration",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "migration:up": "cross-env MIKRO_ORM_ALLOW_GLOBAL_CLI=1 mikro-orm migration:up --config ./src/infrastructure/database/mikro-orm.config.ts",
+    "migration:down": "cross-env MIKRO_ORM_ALLOW_GLOBAL_CLI=1 mikro-orm migration:down --config ./src/infrastructure/database/mikro-orm.config.ts",
+    "migration:create": "cross-env MIKRO_ORM_ALLOW_GLOBAL_CLI=1 mikro-orm migration:create --config ./src/infrastructure/database/mikro-orm.config.ts",
+    "db:check": "bun src/infrastructure/database/check-connection.ts",
+    "reconcile": "bun scripts/reconcile.ts",
+    "smoke": "bun scripts/smoke.ts",
+    "sqs": "bun scripts/sqs.ts"
   },
   "dependencies": {
     "@aws-sdk/client-sqs": "^3.1152.0",
+    "@mikro-orm/cli": "7.2.5",
     "@mikro-orm/core": "^7.2.5",
     "@mikro-orm/decorators": "^7.2.5",
     "@mikro-orm/migrations": "^7.2.5",
@@ -36,11 +47,11 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
     "decimal.js": "^10.6.0",
+    "dotenv": "^18.0.8",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"
   },
   "devDependencies": {
-    "@mikro-orm/cli": "^7.2.5",
     "@nestjs/cli": "^12.0.0",
     "@nestjs/mau": "^0.2.6",
     "@nestjs/schematics": "^12.0.0",
@@ -50,6 +61,7 @@
     "@types/node": "^24.0.0",
     "@types/supertest": "^7.0.0",
     "@vitest/coverage-v8": "^4.1.2",
+    "cross-env": "^10.1.0",
     "oxlint": "^1.58.0",
     "oxlint-tsgolint": "^7.0.2001",
     "prettier": "^3.4.2",

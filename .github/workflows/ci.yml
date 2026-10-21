@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Executa o projeto do zero a cada push: instala, valida, sobe PostgreSQL e
+# ElasticMQ, aplica e reverte migrations, roda todos os testes (incluindo SQS
+# real e múltiplos processos), sobe a API e roda o smoke test.
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: wagering_db
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d wagering_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DB_HOST: localhost
+      DB_PORT: '5433'
+      DB_NAME: wagering_db
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      AWS_REGION: us-east-1
+      SQS_ENDPOINT: http://localhost:9324
+      SQS_ACCESS_KEY_ID: test
+      SQS_SECRET_ACCESS_KEY: test
+      SQS_WAGER_QUEUE_URL: http://localhost:9324/000000000000/wager-transactions.fifo
+      SQS_WAGER_DLQ_URL: http://localhost:9324/000000000000/wager-transactions-dlq.fifo
+      SQS_EVENTS_QUEUE_URL: http://localhost:9324/000000000000/wallet-events.fifo
+      SQS_MAX_RECEIVE_COUNT: '3'
+      # Em CI nada pode ser pulado silenciosamente.
+      REQUIRE_SQS: '1'
+      REQUIRE_MULTIPROCESS: '1'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - name: Subir ElasticMQ (SQS local) com as filas e DLQs do projeto
+        run: |
+          docker run -d --name elasticmq -p 9324:9324 \
+            -v "$PWD/elasticmq.conf:/opt/elasticmq.conf:ro" \
+            softwaremill/elasticmq-native:latest
+          for i in $(seq 1 30); do
+            curl -sf "http://localhost:9324/?Action=ListQueues" >/dev/null && exit 0
+            sleep 1
+          done
+          docker logs elasticmq; exit 1
+
+      - name: Instalar dependências
+        run: bun install --frozen-lockfile
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Testes unitários
+        run: bun run test
+
+      - name: Migrations (up → down → up, valida reversibilidade)
+        run: |
+          bun run migration:up
+          bun run migration:down
+          bun run migration:up
+
+      - name: Testes de integração (PostgreSQL + SQS reais, múltiplos processos)
+        run: bun run test:integration
+
+      - name: Build
+        run: bun run build
+
+      - name: Subir a API e rodar o smoke test
+        env:
+          SQS_CONSUMER_ENABLED: 'true'
+          OUTBOX_PUBLISHER_ENABLED: 'true'
+          RECONCILIATION_INTERVAL_MS: '5000'
+        run: |
+          bun run start > app.log 2>&1 &
+          bun run smoke
+          bun run reconcile
+
+      - name: Logs da aplicação
+        if: always()
+        run: cat app.log || true
